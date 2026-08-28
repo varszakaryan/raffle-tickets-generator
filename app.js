@@ -13,50 +13,113 @@ const rightMeta = document.getElementById("right-meta");
 const leftInput = document.getElementById("left-upload");
 const rightInput = document.getElementById("right-upload");
 
-const pendingFiles = { left: null, right: null };
-const localPreviewUrls = { left: null, right: null };
+const STORAGE_KEYS = {
+  left: "raffle-tickets.bg.left",
+  right: "raffle-tickets.bg.right",
+};
+const DEFAULT_BG = "assets/ticket-bg-white.png";
+const MAX_STORE_EDGE = 1600;
 
 const setStatus = (message, isError = false) => {
   status.textContent = message;
   status.classList.toggle("error", isError);
 };
 
-const withCacheBust = (url) => `${url}?t=${Date.now()}`;
-
-const revokePreview = (side) => {
-  if (localPreviewUrls[side]) {
-    URL.revokeObjectURL(localPreviewUrls[side]);
-    localPreviewUrls[side] = null;
+const readStoredBackground = (side) => {
+  try {
+    return localStorage.getItem(STORAGE_KEYS[side]);
+  } catch (error) {
+    return null;
   }
 };
 
-const applyBackgrounds = (payload) => {
-  if (!pendingFiles.left) {
-    leftThumb.src = withCacheBust(payload.leftUrl);
-    leftMeta.textContent = payload.leftCustom ? "Custom upload" : "Default";
-  }
-  if (!pendingFiles.right) {
-    rightThumb.src = withCacheBust(payload.rightUrl);
-    rightMeta.textContent = payload.rightCustom ? "Custom upload" : "Default";
-  }
+const writeStoredBackground = (side, dataUrl) => {
+  localStorage.setItem(STORAGE_KEYS[side], dataUrl);
 };
 
-const showLocalBackground = (side, file) => {
-  revokePreview(side);
-  pendingFiles[side] = file;
-  localPreviewUrls[side] = URL.createObjectURL(file);
+const clearStoredBackground = (side) => {
+  localStorage.removeItem(STORAGE_KEYS[side]);
+};
+
+const clearAllStoredBackgrounds = () => {
+  clearStoredBackground("left");
+  clearStoredBackground("right");
+};
+
+const loadImageElement = (source) =>
+  new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Could not read that image."));
+    image.src = source;
+  });
+
+const fileToDataUrl = (file) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error("Could not read that file."));
+    reader.readAsDataURL(file);
+  });
+
+const compressForStorage = (dataUrl) =>
+  loadImageElement(dataUrl).then((image) => {
+    const scale = Math.min(1, MAX_STORE_EDGE / Math.max(image.width, image.height));
+    const width = Math.max(1, Math.round(image.width * scale));
+    const height = Math.max(1, Math.round(image.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, width, height);
+    context.drawImage(image, 0, 0, width, height);
+    return canvas.toDataURL("image/jpeg", 0.88);
+  });
+
+const dataUrlToFile = (dataUrl, filename) => {
+  const [header, body] = dataUrl.split(",");
+  const mime = header.match(/data:(.*?);/)?.[1] || "image/jpeg";
+  const binary = atob(body);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return new File([bytes], filename, { type: mime });
+};
+
+const paintSide = (side, dataUrl) => {
   const thumb = side === "left" ? leftThumb : rightThumb;
   const meta = side === "left" ? leftMeta : rightMeta;
-  thumb.src = localPreviewUrls[side];
-  meta.textContent = "Ready (local)";
+  if (dataUrl) {
+    thumb.src = dataUrl;
+    meta.textContent = "Saved locally";
+    return;
+  }
+  thumb.src = DEFAULT_BG;
+  meta.textContent = "Default";
 };
 
-const clearLocalBackgrounds = () => {
-  revokePreview("left");
-  revokePreview("right");
-  pendingFiles.left = null;
-  pendingFiles.right = null;
+const restoreFromLocalStorage = () => {
+  paintSide("left", readStoredBackground("left"));
+  paintSide("right", readStoredBackground("right"));
 };
+
+const saveBackgroundLocally = (side, file) =>
+  fileToDataUrl(file)
+    .then(compressForStorage)
+    .then((dataUrl) => {
+      try {
+        writeStoredBackground(side, dataUrl);
+      } catch (error) {
+        if (error?.name === "QuotaExceededError") {
+          throw new Error("Image too large for local storage. Try a smaller file.");
+        }
+        throw error;
+      }
+      paintSide(side, dataUrl);
+      return dataUrl;
+    });
 
 const readJson = (response) =>
   response.json().then((payload) => {
@@ -66,33 +129,18 @@ const readJson = (response) =>
     return payload;
   });
 
-const loadBackgrounds = () =>
-  fetch("api/backgrounds")
-    .then(readJson)
-    .then(applyBackgrounds);
-
-const uploadBackground = (side, file) => {
-  const body = new FormData();
-  body.append("image", file);
-
-  return fetch(`api/backgrounds/${side}`, {
-    method: "POST",
-    body,
-  }).then(readJson);
-};
-
-const resetBackgrounds = () =>
-  fetch("api/backgrounds/reset", { method: "POST" }).then(readJson);
-
 const generateTickets = (start, end) => {
   const body = new FormData();
   body.append("start", start);
   body.append("end", end);
-  if (pendingFiles.left) {
-    body.append("left", pendingFiles.left);
+
+  const leftData = readStoredBackground("left");
+  const rightData = readStoredBackground("right");
+  if (leftData) {
+    body.append("left", dataUrlToFile(leftData, "left.jpg"));
   }
-  if (pendingFiles.right) {
-    body.append("right", pendingFiles.right);
+  if (rightData) {
+    body.append("right", dataUrlToFile(rightData, "right.jpg"));
   }
 
   return fetch("api/generate", {
@@ -103,29 +151,19 @@ const generateTickets = (start, end) => {
 
 const bindDropzone = (side, input) => {
   const zone = document.querySelector(`.dropzone[data-side="${side}"]`);
-
   const openPicker = () => input.click();
 
   const handleFiles = (files) => {
     const file = files && files[0];
     if (!file) return;
 
-    showLocalBackground(side, file);
-    setStatus(`Uploading ${side} background…`);
-
-    uploadBackground(side, file)
-      .then((payload) => {
-        // Keep showing local preview; server copy is stored for persistence.
-        applyBackgrounds(payload);
-        const meta = side === "left" ? leftMeta : rightMeta;
-        meta.textContent = "Custom upload";
-        setStatus(`${side[0].toUpperCase()}${side.slice(1)} background updated.`);
+    setStatus(`Saving ${side} background locally…`);
+    saveBackgroundLocally(side, file)
+      .then(() => {
+        setStatus(`${side[0].toUpperCase()}${side.slice(1)} background saved in this browser.`);
       })
-      .catch(() => {
-        setStatus(
-          `${side[0].toUpperCase()}${side.slice(1)} kept locally — will send on generate.`,
-          false
-        );
+      .catch((error) => {
+        setStatus(error.message, true);
       });
   };
 
@@ -162,24 +200,9 @@ bindDropzone("left", leftInput);
 bindDropzone("right", rightInput);
 
 resetButton.addEventListener("click", () => {
-  setStatus("Restoring default backgrounds…");
-  clearLocalBackgrounds();
-  resetBackgrounds()
-    .then((payload) => {
-      applyBackgrounds(payload);
-      leftThumb.src = withCacheBust(payload.leftUrl);
-      rightThumb.src = withCacheBust(payload.rightUrl);
-      leftMeta.textContent = "Default";
-      rightMeta.textContent = "Default";
-      setStatus("Default backgrounds restored.");
-    })
-    .catch((error) => {
-      leftThumb.src = "assets/ticket-bg-white.png";
-      rightThumb.src = "assets/ticket-bg-white.png";
-      leftMeta.textContent = "Default";
-      rightMeta.textContent = "Default";
-      setStatus(error.message, true);
-    });
+  clearAllStoredBackgrounds();
+  restoreFromLocalStorage();
+  setStatus("Local backgrounds cleared.");
 });
 
 form.addEventListener("submit", (event) => {
@@ -210,6 +233,4 @@ form.addEventListener("submit", (event) => {
     });
 });
 
-loadBackgrounds().catch(() => {
-  setStatus("Open via npm start (http://localhost:3010) for uploads & PDF export.", true);
-});
+restoreFromLocalStorage();

@@ -180,9 +180,9 @@ app.post("/api/generate", (req, res) => {
     );
     clearDirectory(batchDir);
 
-    const stored = resolveBackgrounds();
-    let leftPath = stored.leftPath;
-    let rightPath = stored.rightPath;
+    // Defaults from assets; request images override for this batch only.
+    let leftPath = path.join(ROOT, "assets", "ticket-bg-white.png");
+    let rightPath = path.join(ROOT, "assets", "ticket-bg-white.png");
 
     try {
       const leftFile = req.files?.left?.[0];
@@ -190,22 +190,9 @@ app.post("/api/generate", (req, res) => {
 
       if (leftFile) {
         leftPath = saveSideUploadToDir("left", leftFile, batchDir);
-        ensureUploadsDir();
-        // Persist for later sessions: copy into uploads/
-        const persist = path.join(UPLOADS, path.basename(leftPath));
-        fs.readdirSync(UPLOADS)
-          .filter((name) => name.startsWith("left."))
-          .forEach((name) => fs.rmSync(path.join(UPLOADS, name), { force: true }));
-        fs.copyFileSync(leftPath, persist);
       }
-
       if (rightFile) {
         rightPath = saveSideUploadToDir("right", rightFile, batchDir);
-        ensureUploadsDir();
-        fs.readdirSync(UPLOADS)
-          .filter((name) => name.startsWith("right."))
-          .forEach((name) => fs.rmSync(path.join(UPLOADS, name), { force: true }));
-        fs.copyFileSync(rightPath, path.join(UPLOADS, path.basename(rightPath)));
       }
     } catch (uploadError) {
       res.status(400).json({ success: false, error: uploadError.message });
