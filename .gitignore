@@ -2,5 +2,5 @@ node_modules/
 output/
 .DS_Store
 *.zip
-uploads/
-!.gitkeep
+uploads/*
+!uploads/.gitkeep

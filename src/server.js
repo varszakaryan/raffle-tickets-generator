@@ -7,8 +7,10 @@ const multer = require("multer");
 const {
   UPLOADS,
   SIDES,
+  ensureUploadsDir,
   resolveBackgrounds,
   saveSideUpload,
+  saveSideUploadToDir,
   resetBackgrounds,
   isAllowedImage,
 } = require("./backgrounds");
@@ -18,6 +20,11 @@ const OUTPUT = path.join(ROOT, "output");
 const GENERATOR = path.join(__dirname, "generate-tickets.py");
 const PORT = process.env.PORT || 3010;
 const ROOT_FILES = new Set(["index.html", "styles.css", "app.js"]);
+
+ensureUploadsDir();
+if (!fs.existsSync(OUTPUT)) {
+  fs.mkdirSync(OUTPUT, { recursive: true });
+}
 
 const app = express();
 app.use(express.json({ limit: "32kb" }));
@@ -142,6 +149,7 @@ app.post("/api/backgrounds/:side", (req, res) => {
     }
 
     try {
+      ensureUploadsDir();
       const backgrounds = saveSideUpload(side, req.file);
       res.json({ success: true, ...backgrounds });
     } catch (uploadError) {
@@ -151,46 +159,80 @@ app.post("/api/backgrounds/:side", (req, res) => {
 });
 
 app.post("/api/generate", (req, res) => {
-  const range = parseRange(req.body || {});
-  if (range.error) {
-    res.status(400).json({ success: false, error: range.error });
-    return;
-  }
+  upload.fields([
+    { name: "left", maxCount: 1 },
+    { name: "right", maxCount: 1 },
+  ])(req, res, (error) => {
+    if (error) {
+      res.status(400).json({ success: false, error: error.message });
+      return;
+    }
 
-  const batchDir = path.join(
-    OUTPUT,
-    `batch-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`
-  );
-  const backgrounds = resolveBackgrounds();
+    const range = parseRange(req.body || {});
+    if (range.error) {
+      res.status(400).json({ success: false, error: range.error });
+      return;
+    }
 
-  clearDirectory(batchDir);
+    const batchDir = path.join(
+      OUTPUT,
+      `batch-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`
+    );
+    clearDirectory(batchDir);
 
-  runGenerator(
-    range.start,
-    range.end,
-    batchDir,
-    backgrounds.leftPath,
-    backgrounds.rightPath
-  )
-    .then((result) => {
-      const batchId = path.basename(batchDir);
-      res.json({
-        success: true,
-        count: result.count,
-        pages: result.pages,
-        perPage: result.perPage,
-        cols: result.cols,
-        rows: result.rows,
-        ticketHeightCm: result.ticketHeightCm,
-        ticketWidthCm: result.ticketWidthCm,
-        batchId,
-        preview: `/api/preview/${batchId}/${result.preview}`,
-        pdf: result.pdf,
+    const stored = resolveBackgrounds();
+    let leftPath = stored.leftPath;
+    let rightPath = stored.rightPath;
+
+    try {
+      const leftFile = req.files?.left?.[0];
+      const rightFile = req.files?.right?.[0];
+
+      if (leftFile) {
+        leftPath = saveSideUploadToDir("left", leftFile, batchDir);
+        ensureUploadsDir();
+        // Persist for later sessions: copy into uploads/
+        const persist = path.join(UPLOADS, path.basename(leftPath));
+        fs.readdirSync(UPLOADS)
+          .filter((name) => name.startsWith("left."))
+          .forEach((name) => fs.rmSync(path.join(UPLOADS, name), { force: true }));
+        fs.copyFileSync(leftPath, persist);
+      }
+
+      if (rightFile) {
+        rightPath = saveSideUploadToDir("right", rightFile, batchDir);
+        ensureUploadsDir();
+        fs.readdirSync(UPLOADS)
+          .filter((name) => name.startsWith("right."))
+          .forEach((name) => fs.rmSync(path.join(UPLOADS, name), { force: true }));
+        fs.copyFileSync(rightPath, path.join(UPLOADS, path.basename(rightPath)));
+      }
+    } catch (uploadError) {
+      res.status(400).json({ success: false, error: uploadError.message });
+      return;
+    }
+
+    runGenerator(range.start, range.end, batchDir, leftPath, rightPath)
+      .then((result) => {
+        const batchId = path.basename(batchDir);
+        res.json({
+          success: true,
+          count: result.count,
+          pages: result.pages,
+          perPage: result.perPage,
+          cols: result.cols,
+          rows: result.rows,
+          ticketHeightCm: result.ticketHeightCm,
+          ticketWidthCm: result.ticketWidthCm,
+          batchId,
+          preview: `api/preview/${batchId}/${result.preview}`,
+          pdf: result.pdf,
+        });
+      })
+      .catch((generateError) => {
+        res.status(500).json({ success: false, error: generateError.message });
       });
-    })
-    .catch((error) => {
-      res.status(500).json({ success: false, error: error.message });
-    });
+  });
 });
 
 app.get("/api/preview/:batchId/:file", (req, res) => {
@@ -216,8 +258,8 @@ app.get("/api/download/:batchId", (req, res) => {
   );
 
   const archive = archiver("zip", { zlib: { level: 9 } });
-  archive.on("error", (error) => {
-    res.status(500).end(error.message);
+  archive.on("error", (archiveError) => {
+    res.status(500).end(archiveError.message);
   });
   archive.pipe(res);
 
@@ -230,6 +272,6 @@ app.get("/api/download/:batchId", (req, res) => {
   archive.finalize();
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, "0.0.0.0", () => {
   console.log(`Raffle ticket generator running at http://localhost:${PORT}`);
 });

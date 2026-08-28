@@ -45,11 +45,11 @@ const resolveBackgrounds = () => {
     leftCustom: Boolean(leftCustom),
     rightCustom: Boolean(rightCustom),
     leftUrl: leftCustom
-      ? `/uploads/${path.basename(leftCustom)}`
-      : "/assets/ticket-bg-white.png",
+      ? `uploads/${path.basename(leftCustom)}`
+      : "assets/ticket-bg-white.png",
     rightUrl: rightCustom
-      ? `/uploads/${path.basename(rightCustom)}`
-      : "/assets/ticket-bg-white.png",
+      ? `uploads/${path.basename(rightCustom)}`
+      : "assets/ticket-bg-white.png",
   };
 };
 
@@ -67,6 +67,18 @@ const extensionFor = (file) => {
 
 const isAllowedImage = (file) => Boolean(extensionFor(file));
 
+const moveUploadedFile = (fromPath, toPath) => {
+  try {
+    fs.renameSync(fromPath, toPath);
+  } catch (error) {
+    if (error.code !== "EXDEV") {
+      throw error;
+    }
+    fs.copyFileSync(fromPath, toPath);
+    fs.rmSync(fromPath, { force: true });
+  }
+};
+
 const saveSideUpload = (side, file) => {
   if (!SIDES.includes(side)) {
     throw new Error("Side must be left or right.");
@@ -83,8 +95,21 @@ const saveSideUpload = (side, file) => {
 
   const ext = extensionFor(file);
   const dest = path.join(UPLOADS, `${side}${ext}`);
-  fs.renameSync(file.path, dest);
+  moveUploadedFile(file.path, dest);
   return resolveBackgrounds();
+};
+
+const saveSideUploadToDir = (side, file, dir) => {
+  if (!file) {
+    return null;
+  }
+  if (!isAllowedImage(file)) {
+    throw new Error("Use a PNG, JPG, WEBP, or GIF image.");
+  }
+  const ext = extensionFor(file);
+  const dest = path.join(dir, `${side}${ext}`);
+  moveUploadedFile(file.path, dest);
+  return dest;
 };
 
 const resetBackgrounds = () => {
@@ -96,8 +121,10 @@ const resetBackgrounds = () => {
 module.exports = {
   UPLOADS,
   SIDES,
+  ensureUploadsDir,
   resolveBackgrounds,
   saveSideUpload,
+  saveSideUploadToDir,
   resetBackgrounds,
   isAllowedImage,
   extensionFor,
