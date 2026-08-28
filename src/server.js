@@ -21,6 +21,11 @@ const PORT = process.env.PORT || 3010;
 
 const app = express();
 app.use(express.json({ limit: "32kb" }));
+
+app.get("/", (_req, res) => {
+  res.sendFile(path.join(ROOT, "index.html"));
+});
+
 app.use(express.static(PUBLIC));
 app.use("/assets", express.static(path.join(ROOT, "assets")));
 app.use("/uploads", express.static(UPLOADS));
