@@ -1,3 +1,5 @@
+import { generateRaffleZip } from "./generate.js";
+
 const form = document.getElementById("generator-form");
 const startInput = document.getElementById("start");
 const endInput = document.getElementById("end");
@@ -19,6 +21,8 @@ const STORAGE_KEYS = {
 };
 const DEFAULT_BG = "assets/ticket-bg-white.png";
 const MAX_STORE_EDGE = 1600;
+
+let downloadUrl = null;
 
 const setStatus = (message, isError = false) => {
   status.textContent = message;
@@ -45,6 +49,8 @@ const clearAllStoredBackgrounds = () => {
   clearStoredBackground("left");
   clearStoredBackground("right");
 };
+
+const backgroundSource = (side) => readStoredBackground(side) || DEFAULT_BG;
 
 const loadImageElement = (source) =>
   new Promise((resolve, reject) => {
@@ -76,17 +82,6 @@ const compressForStorage = (dataUrl) =>
     context.drawImage(image, 0, 0, width, height);
     return canvas.toDataURL("image/jpeg", 0.88);
   });
-
-const dataUrlToFile = (dataUrl, filename) => {
-  const [header, body] = dataUrl.split(",");
-  const mime = header.match(/data:(.*?);/)?.[1] || "image/jpeg";
-  const binary = atob(body);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-  return new File([bytes], filename, { type: mime });
-};
 
 const paintSide = (side, dataUrl) => {
   const thumb = side === "left" ? leftThumb : rightThumb;
@@ -121,32 +116,29 @@ const saveBackgroundLocally = (side, file) =>
       return dataUrl;
     });
 
-const readJson = (response) =>
-  response.json().then((payload) => {
-    if (!response.ok || !payload.success) {
-      throw new Error(payload.error || "Request failed.");
-    }
-    return payload;
-  });
-
-const generateTickets = (start, end) => {
-  const body = new FormData();
-  body.append("start", start);
-  body.append("end", end);
-
-  const leftData = readStoredBackground("left");
-  const rightData = readStoredBackground("right");
-  if (leftData) {
-    body.append("left", dataUrlToFile(leftData, "left.jpg"));
+const clearDownloadUrl = () => {
+  if (downloadUrl) {
+    URL.revokeObjectURL(downloadUrl);
+    downloadUrl = null;
   }
-  if (rightData) {
-    body.append("right", dataUrlToFile(rightData, "right.jpg"));
-  }
+};
 
-  return fetch("api/generate", {
-    method: "POST",
-    body,
-  }).then(readJson);
+const parseRange = () => {
+  const start = Number.parseInt(startInput.value, 10);
+  const end = Number.parseInt(endInput.value, 10);
+  if (!Number.isInteger(start) || !Number.isInteger(end)) {
+    throw new Error("Enter whole numbers for the ticket range.");
+  }
+  if (start < 0 || end < 0) {
+    throw new Error("Ticket numbers must be zero or greater.");
+  }
+  if (start > end) {
+    throw new Error("Start must be less than or equal to end.");
+  }
+  if (end - start > 5000) {
+    throw new Error("Maximum range is 5000 tickets.");
+  }
+  return { start, end };
 };
 
 const bindDropzone = (side, input) => {
@@ -160,7 +152,9 @@ const bindDropzone = (side, input) => {
     setStatus(`Saving ${side} background locally…`);
     saveBackgroundLocally(side, file)
       .then(() => {
-        setStatus(`${side[0].toUpperCase()}${side.slice(1)} background saved in this browser.`);
+        setStatus(
+          `${side[0].toUpperCase()}${side.slice(1)} background saved in this browser.`
+        );
       })
       .catch((error) => {
         setStatus(error.message, true);
@@ -207,18 +201,37 @@ resetButton.addEventListener("click", () => {
 
 form.addEventListener("submit", (event) => {
   event.preventDefault();
-  const start = startInput.value;
-  const end = endInput.value;
+
+  let range;
+  try {
+    range = parseRange();
+  } catch (error) {
+    setStatus(error.message, true);
+    return;
+  }
 
   button.disabled = true;
   downloadLink.hidden = true;
-  setStatus("Generating tickets…");
+  clearDownloadUrl();
+  setStatus("Generating on your device…");
 
-  generateTickets(start, end)
+  generateRaffleZip({
+    start: range.start,
+    end: range.end,
+    leftSource: backgroundSource("left"),
+    rightSource: backgroundSource("right"),
+    onProgress: (done, total) => {
+      setStatus(`Generating on your device… ${done}/${total}`);
+    },
+  })
     .then((result) => {
-      preview.src = `${result.preview}?t=${Date.now()}`;
-      downloadLink.href = `api/download/${result.batchId}`;
+      downloadUrl = URL.createObjectURL(result.zipBlob);
+      downloadLink.href = downloadUrl;
+      downloadLink.download = `raffle-tickets-${range.start}-${range.end}.zip`;
       downloadLink.hidden = false;
+      if (result.previewUrl) {
+        preview.src = result.previewUrl;
+      }
       setStatus(
         `Created ${result.count} tickets on ${result.pages} A4 page(s) ` +
           `(${result.cols}×${result.rows} = ${result.perPage}/page, ` +
@@ -226,7 +239,7 @@ form.addEventListener("submit", (event) => {
       );
     })
     .catch((error) => {
-      setStatus(error.message, true);
+      setStatus(error.message || "Generation failed.", true);
     })
     .finally(() => {
       button.disabled = false;

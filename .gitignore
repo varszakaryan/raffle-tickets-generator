@@ -1,6 +1,7 @@
+uploads/*
+!uploads/.gitkeep
 node_modules/
 output/
 .DS_Store
 *.zip
-uploads/*
-!uploads/.gitkeep
+package-lock.json

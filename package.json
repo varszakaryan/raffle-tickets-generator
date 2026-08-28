@@ -1,15 +1,10 @@
 {
   "name": "raffle-tickets",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
-  "description": "Generate numbered raffle ticket PNGs from a background template",
+  "description": "Client-side raffle ticket generator — localStorage backgrounds and in-browser PDF export",
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "node src/server.js"
-  },
-  "dependencies": {
-    "archiver": "^7.0.1",
-    "express": "^4.21.2",
-    "multer": "^2.3.0"
+    "start": "python3 -m http.server 3010",
+    "dev": "python3 -m http.server 3010"
   }
 }

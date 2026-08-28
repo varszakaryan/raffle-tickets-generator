@@ -19,8 +19,8 @@
         <p class="brand">RAFFLE TICKETS GENERATOR</p>
         <h1>Stamp the numbers. Export the stack.</h1>
         <p class="lede">
-          Upload left/right backgrounds (stored in your browser), enter a ticket
-          range, and export an A4 PDF pack — each number is a pair (4.5&nbsp;cm tall).
+          Runs entirely in your browser — upload backgrounds, generate numbered
+          A4 PDF pairs (4.5&nbsp;cm tall), and download a ZIP. No server required.
         </p>
       </section>
 
@@ -84,8 +84,8 @@
           </label>
           <button type="submit" id="generate-btn">Generate PDF ZIP</button>
           <p class="hint" id="status">
-            Each number prints as a left + right pair (4.5 cm tall) on A4.
-            Backgrounds are saved in this browser (local storage).
+            Backgrounds &amp; generation stay on your device (local storage +
+            in-browser PDF).
           </p>
         </form>
 
@@ -99,6 +99,6 @@
         </aside>
       </section>
     </main>
-    <script src="app.js"></script>
+    <script type="module" src="app.js"></script>
   </body>
 </html>
