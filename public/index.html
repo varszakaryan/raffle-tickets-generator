@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Raffle Tickets Generator</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Anton&family=IBM+Plex+Mono:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="grain" aria-hidden="true"></div>
+    <main class="stage">
+      <section class="hero">
+        <p class="brand">RAFFLE TICKETS GENERATOR</p>
+        <h1>Stamp the numbers. Export the stack.</h1>
+        <p class="lede">
+          Upload left/right backgrounds, enter a ticket range, and export an A4
+          PDF pack — each number is a pair (4.5&nbsp;cm tall).
+        </p>
+      </section>
+
+      <section class="bg-board" aria-label="Background uploads">
+        <article class="dropzone" data-side="left" tabindex="0">
+          <input
+            id="left-upload"
+            class="dropzone-input"
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            hidden
+          />
+          <div class="dropzone-frame">
+            <img id="left-thumb" src="/assets/ticket-bg-white.png" alt="Left ticket background" />
+            <div class="dropzone-veil">
+              <p class="dropzone-label">Left bg</p>
+              <p class="dropzone-hint">Drop or click to replace</p>
+            </div>
+          </div>
+          <p class="dropzone-meta" id="left-meta">Default</p>
+        </article>
+
+        <article class="dropzone" data-side="right" tabindex="0">
+          <input
+            id="right-upload"
+            class="dropzone-input"
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            hidden
+          />
+          <div class="dropzone-frame">
+            <img
+              id="right-thumb"
+              src="/assets/ticket-bg-white.png"
+              alt="Right ticket background"
+            />
+            <div class="dropzone-veil">
+              <p class="dropzone-label">Right bg</p>
+              <p class="dropzone-hint">Drop or click to replace</p>
+            </div>
+          </div>
+          <p class="dropzone-meta" id="right-meta">Default</p>
+        </article>
+      </section>
+
+      <div class="bg-actions">
+        <button type="button" class="ghost-btn" id="reset-backgrounds">
+          Reset backgrounds
+        </button>
+      </div>
+
+      <section class="workspace">
+        <form class="panel" id="generator-form">
+          <label class="field">
+            <span>From</span>
+            <input id="start" name="start" type="number" min="0" value="1" required />
+          </label>
+          <label class="field">
+            <span>To</span>
+            <input id="end" name="end" type="number" min="0" value="10" required />
+          </label>
+          <button type="submit" id="generate-btn">Generate PDF ZIP</button>
+          <p class="hint" id="status">
+            Each number prints as a left + right pair (4.5 cm tall) on A4.
+            Number color is auto black/white from the background.
+          </p>
+        </form>
+
+        <aside class="preview-wrap">
+          <img
+            id="preview"
+            src="/assets/ticket-bg-white.png"
+            alt="Ticket preview"
+          />
+          <a class="download" id="download-link" hidden href="#">Download PDF ZIP</a>
+        </aside>
+      </section>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>
