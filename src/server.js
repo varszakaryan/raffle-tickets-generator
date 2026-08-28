@@ -14,10 +14,10 @@ const {
 } = require("./backgrounds");
 
 const ROOT = path.join(__dirname, "..");
-const PUBLIC = path.join(ROOT, "public");
 const OUTPUT = path.join(ROOT, "output");
 const GENERATOR = path.join(__dirname, "generate-tickets.py");
 const PORT = process.env.PORT || 3010;
+const ROOT_FILES = new Set(["index.html", "styles.css", "app.js"]);
 
 const app = express();
 app.use(express.json({ limit: "32kb" }));
@@ -26,7 +26,15 @@ app.get("/", (_req, res) => {
   res.sendFile(path.join(ROOT, "index.html"));
 });
 
-app.use(express.static(PUBLIC));
+app.get(/^\/(styles\.css|app\.js)$/, (req, res) => {
+  const file = path.basename(req.path);
+  if (!ROOT_FILES.has(file)) {
+    res.status(404).end();
+    return;
+  }
+  res.sendFile(path.join(ROOT, file));
+});
+
 app.use("/assets", express.static(path.join(ROOT, "assets")));
 app.use("/uploads", express.static(UPLOADS));
 
